@@ -1,0 +1,43 @@
+# Python & Virtual Environment
+virtualEnv/
+env/
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-delete-this-directory.txt
+
+# Streamlit
+.streamlit/
+streamlit.toml
+config.toml
+
+# API Key’ler & Gizli Dosyalar
+.env
+.env.local
+.env.development
+.env.production
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS & Misc
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs & Cache
+*.log
+*.cache
+.cache/
+
+# Deployment & Build
+dist/
+build/
+*.egg-info/
