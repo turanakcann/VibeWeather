@@ -38,7 +38,7 @@ VibeWeather:
 * **Vector Database:** [Pinecone](https://www.pinecone.io/)
 * **Embedding Model:** `paraphrase-multilingual-MiniLM-L12-v2` (Sentence Transformers)
 * **Weather Data:** [WeatherAPI](https://www.weatherapi.com/)
-* **Data Source:** Hugging Face Datasets & Custom Gourmet Drink Dataset
+* **Data Source:** [gamzeyy/film_data](https://huggingface.co/datasets/gamzeyy/film_data) (Hugging Face) & Custom Gourmet Drink Dataset
 
 ---
 
@@ -91,5 +91,5 @@ Projeyi kendi bilgisayarınızda çalıştırmak için adımları takip edin:
 ## 📞 İletişim
 
 **Geliştirici:** Turan Akcan  
-**E-posta:** [turannakcan@gmail.com](mailto:turannakcan@gmail.com)  
+📧 **E-posta:** [turannakcan@gmail.com](mailto:turannakcan@gmail.com)  
 GitHub: [@turanakcann](https://github.com/turanakcann)
