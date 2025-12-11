@@ -1,148 +1,201 @@
-# app.py – SON HALİ (hepsi düzeltildi)
+# app.py
 
 import streamlit as st
+import sqlite3
+import time
 import web_connection
 import weather_set
 import ai_assistant
 import vector_store
 
 def main():
-    st.set_page_config(page_title="VibeWeather", page_icon="logo.png", layout="centered")
+    # --- SAYFA AYARLARI ---
+    st.set_page_config(page_title="VibeWeather", page_icon="🦆", layout="centered")
 
-    # DB başlatma
+    # --- SIDEBAR (FİLTRELER & GEÇMİŞ) ---
+    with st.sidebar:
+        st.header("⚙️ Tercihler")
+        
+        # 1. FİLTRELER (Burada olunca SABİT kalırlar)
+        film_kategorileri = [
+            "Karışık (Önerilen)", "Aksiyon / Macera", "Bilim Kurgu / Fantastik", 
+            "Komedi", "Dram", "Gerilim / Gizem", "Korku", "Romantik", 
+            "Suç / Polisiye", "Animasyon / Anime", "Belgesel / Biyografi"
+        ]
+        kategori_secim = st.selectbox("🎬 Film Türü:", film_kategorileri, key="sb_film")
+        
+        icecek_kategorileri = [
+            "Karışık (Önerilen)", "Sıcak", "Soğuk", "Kahve", "Çay", "Meyveli", "Alkolsüz Kokteyl"
+        ]
+        icecek_secim = st.selectbox("🥤 İçecek:", icecek_kategorileri, key="sb_icecek")
+        
+        st.markdown("---")
+        
+        # 2. GEÇMİŞ SOHBETLER
+        st.header("🗂️ Geçmiş")
+        try:
+            conn = sqlite3.connect('vibeweather_chat.db')
+            c = conn.cursor()
+            c.execute('CREATE TABLE IF NOT EXISTS chats (id INTEGER PRIMARY KEY, request TEXT, response TEXT)')
+            c.execute("SELECT id, request, response FROM chats ORDER BY id DESC LIMIT 10")
+            rows = c.fetchall()
+            conn.close()
+            
+            if rows:
+                for chat_id, req, res in rows:
+                    btn_label = req[:22] + "..." if len(req) > 22 else req
+                    if st.button(f"💬 {btn_label}", key=f"hist_{chat_id}", use_container_width=True):
+                        st.session_state.messages = [
+                            {"role": "user", "content": req},
+                            {"role": "assistant", "content": res}
+                        ]
+                        st.rerun()
+            else:
+                st.caption("Henüz geçmiş yok.")
+        except:
+            st.error("Geçmiş yüklenemedi.")
+
+        st.markdown("---")
+        if st.button("🗑️ Temizle", use_container_width=True):
+            st.session_state.messages = []
+            st.rerun()
+
+    # --- BAŞLANGIÇ ---
     if "db_ready" not in st.session_state:
-        with st.spinner(""):
-            placeholder = st.empty()
-            placeholder.markdown("<h3 style='text-align:center;color:#ff6b35;'>VibeWeather hazırlanıyor...</h3>", unsafe_allow_html=True)
+        with st.spinner("Sistem hazırlanıyor..."):
             if vector_store.initialize_vector_db() is None:
-                st.error("Pinecone bağlantı hatası!")
+                st.error("Veritabanı hatası!")
                 st.stop()
-            placeholder.empty()
             st.session_state.db_ready = True
 
-    konum_verisi, is_push_button = web_connection.render_ui_and_get_location()
+    if "last_top_location" not in st.session_state: st.session_state.last_top_location = None
+    if "weather_cache" not in st.session_state: st.session_state.weather_cache = None
+    if "messages" not in st.session_state: st.session_state.messages = []
 
-    if "weather_cache" not in st.session_state:
-        st.session_state.weather_cache = None
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
+    # CSS (TURUNCU KART TASARIMI)
+    st.markdown("""
+    <style>
+    .weather-card {
+        background: linear-gradient(135deg, #FF512F, #DD2476); /* Turuncu-Pembe Gradient */
+        border-radius: 20px;
+        padding: 30px;
+        text-align: center;
+        border: none;
+        box-shadow: 0 10px 30px rgba(221, 36, 118, 0.4);
+        margin-top: 20px;
+        margin-bottom: 30px;
+        color: white;
+    }
+    .weather-temp { font-size: 64px; font-weight: 800; margin: 0; text-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
+    .weather-city { font-size: 32px; font-weight: bold; margin-bottom: 5px; }
+    .weather-desc { font-size: 20px; font-weight: 500; opacity: 0.9; }
+    .weather-detail { font-size: 14px; margin-top: 10px; opacity: 0.8; }
+    
+    /* Yan menü butonu */
+    section[data-testid="stSidebar"] button { text-align: left; }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # İlk giriş
-    if not st.session_state.weather_cache and not is_push_button:
-        st.markdown("<h2 style='text-align:center;color:#fff;margin-top:40px;'>Bugün hangi vibe'dasın?</h2>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center;color:#ffdda1;font-size:18px;margin-bottom:40px;'>Şehir gir, sana özel film + içecek önerisi al</p>", unsafe_allow_html=True)
+    # 1. UI ve Konum Al
+    konum_verisi, is_process_triggered = web_connection.render_ui_and_get_location()
 
-        cols = st.columns(6)
-        sehirler = ["İstanbul", "Ankara", "İzmir", "Şanlıurfa", "Ağrı", "Van"]
-        for col, sehir in zip(cols, sehirler):
-            if col.button(sehir, use_container_width=True):
-                konum_verisi = sehir
-                is_push_button = True
+    # 2. ANA İŞLEM (GPS/Manuel)
+    if is_process_triggered and konum_verisi:
+        # Eğer yeni bir üst konum geldiyse çalıştır
+        if konum_verisi != st.session_state.last_top_location or st.session_state.weather_cache is None:
+            with st.spinner(f"🚀 '{konum_verisi}' analiz ediliyor..."):
+                w = weather_set.get_weather_data(konum_verisi)
+                
+                if w.get("error"):
+                    st.error(w["error"])
+                else:
+                    st.session_state.weather_cache = w
+                    st.session_state.last_top_location = konum_verisi
+                    
+                    # İlk Sorgu
+                    prefs = f"Tercih: {kategori_secim}, İçecek: {icecek_secim}"
+                    q = f"{w['condition']} {w['current_degree']} derece {prefs}"
+                    movies = vector_store.search_by_weather(q, "movies")
+                    drinks = vector_store.search_by_weather(q, "drinks")
+                    
+                    st.session_state.messages = []
+                    resp = ai_assistant.get_chat_response([], w, movies, drinks, user_preferences=prefs)
+                    st.session_state.messages.append({"role": "assistant", "content": resp})
 
-    # Ana işlem
-    if is_push_button or (konum_verisi and not st.session_state.weather_cache):
-        if not konum_verisi:
-            st.stop()
-        with st.spinner(""):
-            w = weather_set.get_weather_data(konum_verisi)
-            if w.get("error"):
-                st.error(w["error"])
-                st.stop()
-            st.session_state.weather_cache = w
-            q = f"{w['condition']} {w['current_degree']} derece"
-            movies = vector_store.search_by_weather(q, "movies")
-            drinks = vector_store.search_by_weather(q, "drinks")
-            resp = ai_assistant.get_chat_response([], w, movies, drinks)
-            st.session_state.messages = [{"role": "assistant", "content": resp}]
-
-    # HAVA KARTI – TAMAMEN TÜRKÇE + RESPONSIVE
+    # --- EKRAN GÖSTERİMİ ---
+    
+    # HAVA DURUMU KARTI
     if st.session_state.weather_cache:
         w = st.session_state.weather_cache
-        temp = float(w['current_degree'])
-
-        # Türkçe durum çevirisi
-        durum_dict = {
-            "Sunny": "Güneşli", "Clear": "Açık", "Partly cloudy": "Parçalı Bulutlu",
-            "Cloudy": "Bulutlu", "Overcast": "Kapalı", "Rain": "Yağmurlu", "Snow": "Karlı",
-            "Mist": "Sisli", "Fog": "Sisli", "Thunder": "Gök Gürültülü"
-        }
-        turkce_durum = w['condition']
-        for eng, tr in durum_dict.items():
-            if eng.lower() in w['condition'].lower():
-                turkce_durum = tr
-                break
-
-        emoji = "Güneşli" if "güneş" in turkce_durum.lower() else \
-                "Yağmurlu" if "yağ" in turkce_durum.lower() else \
-                "Karlı" if "kar" in turkce_durum.lower() else "Bulutlu"
+        country_display = w.get('country', 'TR')
 
         st.markdown(f"""
-        <style>
-        .stApp {{background: linear-gradient(rgba(0,0,0,0.85), rgba(0,0,0,0.9)), 
-                 url("https://source.unsplash.com/random/2560x1440/?cozy+winter+night&{temp}") fixed cover center}}
-        @media (min-width: 769px) {{
-            .weather-card {{
-                position: fixed; top: 20px; right: 20px; width: 340px;
-                background: linear-gradient(135deg, #ee5a24, #ff6b35);
-                backdrop-filter: blur(16px); border-radius: 24px; padding: 22px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.7); z-index: 9999;
-                color: white; text-align: center; border: 1px solid #ff9f1c;
-            }}
-        }}
-        </style>
-
         <div class="weather-card">
-            <div style="font-size:56px;">{emoji}</div>
-            <div style="font-size:28px;font-weight:bold;margin:10px 0">{w['city']}</div>
-            <div style="font-size:60px;font-weight:900;color:#fff;margin:12px 0">{temp}°C</div>
-            <div style="font-size:18px">{turkce_durum}</div>
-            <div style="font-size:14px;opacity:0.8;margin-top:8px">
-                Nem: %{w['humidity']} • Hissedilen: {w.get('feelslike_c', temp)}°C
-            </div>
+            <div class="weather-desc">{w['condition']}</div>
+            <div class="weather-city">{w['city']}</div>
+            <div class="weather-temp">{w['current_degree']}°C</div>
+            <div class="weather-detail">{country_display} | Nem: %{w['humidity']}</div>
         </div>
         """, unsafe_allow_html=True)
-
-        # ÖNERİLER
+        
+        # SOHBET ALANI
+        st.subheader("💬 Sohbet")
+        
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # CHAT – TÜM PARAMETRELER KULLANILIYOR
-        col1, col2, col3 = st.columns([1.5, 2, 1.5])
-        with col2:
-            prompt = st.chat_input("Sohbet et, şehir sor, kategori seç... (Örn: Ankara'da korku filmi öner)")
-        with col1:
-            kategori = st.selectbox("Film Türü:", ["Herhangi", "Aksiyon", "Komedi", "Drama", "Korku", "Bilim Kurgu"], key="film_cat")
-        with col3:
-            icecek = st.selectbox("İçecek:", ["Herhangi", "Sıcak", "Soğuk", "Kahve", "Çay"], key="icecek_pref")
-
-        if prompt:
+        # CHAT INPUT
+        if prompt := st.chat_input("Başka bir yer? (Örn: Urla) veya 'Film öner'"):
+            st.session_state.messages.append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
 
-            # ŞEHİR VAR MI?
+            # Dedektif
             new_city = ai_assistant.extract_city_request(prompt)
-            current_city = st.session_state.weather_cache['city'] if st.session_state.weather_cache else "İstanbul"
+            active_w = st.session_state.weather_cache
+            location_changed = False
 
-            city_to_use = new_city or current_city
-            new_w = weather_set.get_weather_data(city_to_use)
-            if new_w.get("error"):
-                st.error(new_w["error"])
-                st.stop()
+            # Şehir değişimi
+            if new_city:
+                with st.status(f"🌍 {new_city} aranıyor...") as status:
+                    new_w_data = weather_set.get_weather_data(new_city)
+                    if not new_w_data.get("error"):
+                        st.session_state.weather_cache = new_w_data
+                        active_w = new_w_data
+                        status.update(label=f"✅ {new_w_data['city']} bulundu!", state="complete")
+                        location_changed = True
+                    else:
+                        status.update(label="❌ Bulunamadı", state="error")
+            
+            # Cevap Üret
+            if active_w:
+                prefs = f"Tür: {kategori_secim}, İçecek: {icecek_secim}"
+                search_q = f"{active_w['condition']} {active_w['current_degree']} derece {prompt} {prefs}"
+                
+                movies = vector_store.search_by_weather(search_q, "movies")
+                drinks = vector_store.search_by_weather(search_q, "drinks")
+                
+                with st.spinner("Yazıyor..."):
+                    ai_response = ai_assistant.get_chat_response(
+                        st.session_state.messages, active_w, movies, drinks, user_preferences=prefs
+                    )
+                
+                st.session_state.messages.append({"role": "assistant", "content": ai_response})
+                with st.chat_message("assistant"):
+                    st.markdown(ai_response)
 
-            st.session_state.weather_cache = new_w
+                try:
+                    conn = sqlite3.connect('vibeweather_chat.db')
+                    c = conn.cursor()
+                    c.execute("INSERT INTO chats (request, response) VALUES (?, ?)", (prompt, ai_response))
+                    conn.commit()
+                    conn.close()
+                except: pass
 
-            # PROMPT OLUŞTUR – KATEGORİ + İÇECEK + KULLANICI MESAJI
-            full_prompt = f"{prompt} | {kategori} film | {icecek} içecek"
-            q = f"{new_w['condition']} {new_w['current_degree']} derece {kategori.lower()} {icecek.lower()}"
-            movies = vector_store.search_by_weather(q, "movies")
-            drinks = vector_store.search_by_weather(q, "drinks")
+                if location_changed:
+                    time.sleep(1)
+                    st.rerun()
 
-            resp = ai_assistant.get_chat_response([{"role": "user", "content": full_prompt}], new_w, movies, drinks)
-
-            with st.chat_message("assistant"):
-                st.markdown(resp)
-            st.rerun()
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

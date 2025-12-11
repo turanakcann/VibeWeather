@@ -1,5 +1,3 @@
-# ai_assistant.py
-
 import os
 import json
 from openai import OpenAI
@@ -9,10 +7,13 @@ load_dotenv()
 client = OpenAI(api_key=os.getenv('GPT_API_KEY'))
 
 def extract_city_request(user_input):
+    """
+    Kullanıcı mesajından şehir ismini çeker.
+    """
     system_msg = """
-    Kullanıcı mesajından sadece şehir/ilçe ismini çıkar.
-    Eğer yoksa null dön.
-    ÇIKTI: {"city": "ŞehirAdı"}
+    GÖREV: Kullanıcı mesajındaki lokasyon ismini bul.
+    KURALLAR: Sadece il veya ilçe ismini yalın halde ver. Yoksa null ver.
+    ÇIKTI JSON: {"city": "ŞehirAdı"}
     """
     try:
         response = client.chat.completions.create(
@@ -25,16 +26,37 @@ def extract_city_request(user_input):
     except:
         return None
 
-def get_chat_response(messages_history, weather_info, movie_data, drink_data):
-    system_message = f"""
-    Sen VibeWeather asistanısın. Konum: {weather_info['city']}, {weather_info['current_degree']}°C, {weather_info['condition']}
+def get_chat_response(messages_history, weather_info, movie_data, drink_data, user_preferences=""):
+    """
+    user_preferences: Kullanıcının selectbox'tan seçtiği kategori ve içecek türü.
+    """
     
-    Kullanıcı film/dizi ve içecek önerisi istiyor.
-    - Samimi, enerjik, motive edici ol
-    - Film önerirken (Film/Dizi • Tür) mutlaka yaz
-    - İçecek önerirken (Sıcak/Soğuk) yaz
-    - Kullanıcı kategori seçtiyse ona göre öner
-    - Sonunda soru sor
+    system_message = f"""
+    Sen VibeWeather asistanısın.
+    
+    MEVCUT DURUM:
+    📍 Konum: {weather_info['city']}
+    🌡️ Hava: {weather_info['current_degree']}°C, {weather_info['condition']}
+    
+    KULLANICI TERCİHLERİ:
+    {user_preferences}
+    *(Kullanıcı aksi bir şey demedikçe bu tercihleri uygula)*
+    
+    VERİTABANI ÖNERİLERİ:
+    🎬 Filmler: {movie_data}
+    🥤 İçecekler: {drink_data}
+    
+    ⚠️ KESİN KURALLAR (GUARDRAILS):
+    1. SADECE Film/Dizi, İçecek ve Hava Durumu konuş. Başka konuları (siyaset, spor vb.) nazikçe reddet.
+    
+    📝 CEVAP FORMATI VE STİLİ (ÖNEMLİ):
+    - **Ton:** Samimi, enerjik ve emojili olsun.
+    - **Uzunluk:** Cevapları çok kısa kesip atma. Önerdiğin filmin konusuna veya içeceğin tadına kısaca değinerek cevabı biraz zenginleştir (Normalden %5-10 daha detaylı).
+    - **YAPI (ÇOK ÖNEMLİ):** - Önce hava durumuna dair kısa bir yorum yap.
+      - Sonra **FİLM** önerini bir paragrafta anlat.
+      - Daha sonra **İÇECEK** önerini TAMAMEN AYRI bir paragrafta anlat.
+      - (Film ve İçeceği aynı paragrafın içine sıkıştırma).
+    - Cevabı mutlaka bir soruyla bitir (Örn: "Nasıl, beğendin mi?").
     """
 
     full_messages = [{"role": "system", "content": system_message}] + messages_history
@@ -43,8 +65,8 @@ def get_chat_response(messages_history, weather_info, movie_data, drink_data):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=full_messages,
-            temperature=0.8
+            temperature=0.75 # Yaratıcılığı çok az artırdım ki daha detaylı konuşsun
         )
         return response.choices[0].message.content
     except:
-        return "Bir hata oldu, tekrar dene."
+        return "Bağlantıda küçük bir sorun oldu, ama modumuz yerinde! Tekrar dener misin?"
