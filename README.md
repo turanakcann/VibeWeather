@@ -74,7 +74,11 @@ Projeyi kendi bilgisayarınızda çalıştırmak için adımları takip edin:
 
 ## 📸 Ekran Görüntüleri
 
-*(Buraya uygulamanın ekran görüntülerini ekleyebilirsiniz)*
+**
+<img width="1875" height="818" alt="vibeWeather1" src="https://github.com/user-attachments/assets/c8f0954d-efe7-4ebd-8ce5-9ed91ae4d693" />
+<img width="1875" height="812" alt="vibeWeather2" src="https://github.com/user-attachments/assets/657e3063-526f-43c1-a45f-3f1137b3e56e" />
+<img width="1872" height="802" alt="vibeWeather3" src="https://github.com/user-attachments/assets/9ad85e02-10b1-4b74-91dd-21dad9c4167a" />
+<img width="1130" height="928" alt="vibeWeather4" src="https://github.com/user-attachments/assets/b8ecdb20-d9d6-4ec9-9121-c709f3939169" />
 
 ---
 
